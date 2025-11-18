@@ -1,0 +1,103 @@
+groups:
+  - name: dns_shield_alerts
+    interval: 30s
+    rules:
+      # Alert: Service Down
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.service }} is down"
+          description: "Service {{ $labels.service }} has been unreachable for 2 minutes"
+
+      # Alert: High Latency
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, http_request_duration_seconds) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "p99 latency > 50ms for {{ $labels.service }}"
+
+      # Alert: High Error Rate
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate for {{ $labels.service }}"
+          description: "Error rate > 5% for {{ $labels.service }}"
+
+      # Alert: Cache Hit Rate Low
+      - alert: CacheHitRateLow
+        expr: cache_hit_ratio < 0.7
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache hit ratio < 70%"
+          description: "Cache efficiency below threshold"
+
+      # Alert: Request Queue Size
+      - alert: HighQueueSize
+        expr: request_queue_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request queue size"
+          description: "Queue size > 1000 requests pending"
+
+      # Alert: Memory Usage
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage > 90%"
+
+      # Alert: DGA Detection Rate Abnormal
+      - alert: DGADetectionRateAbnormal
+        expr: rate(dga_detections_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Abnormal DGA detection rate"
+          description: "Detection rate spike detected"
+
+      # Alert: BERT Model Performance Degradation
+      - alert: BERTPerformanceDegradation
+        expr: bert_model_accuracy < 0.99
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BERT model accuracy dropped"
+          description: "Accuracy < 99%"
+
+      # Alert: Database Connection Pool Exhausted
+      - alert: DBConnectionPoolExhausted
+        expr: db_connection_pool_usage > 0.9
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "Pool usage > 90%"
+
+      # Alert: Redis Memory High
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Memory usage > 80%"

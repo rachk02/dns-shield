@@ -4,23 +4,110 @@ Train Ensemble Models - LSTM, GRU, Random Forest
 Requires training data from generate_data.py
 """
 
-import pandas as pd
-import numpy as np
+import argparse
 import math
 import json
 from pathlib import Path
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from typing import Any, Dict, Optional
+
+import joblib
+import numpy as np
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    make_scorer,
+)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-import joblib
 
-# Paths
-DATA_FILE = r"C:\dns-shield\data\test\test_domains.csv"
-MODELS_DIR = Path(r"C:\dns-shield\models")
+try:
+    from xgboost import XGBClassifier
+
+    XGBOOST_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    XGBOOST_AVAILABLE = False
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_FILE = PROJECT_ROOT / "data" / "train" / "train_domains.csv"
+MODELS_DIR = PROJECT_ROOT / "models"
+SCALER_PATH = MODELS_DIR / "scaler.joblib"
+METRICS_PATH = MODELS_DIR / "training_metrics.json"
+DEFAULT_REPORTS_DIR = PROJECT_ROOT / "reports"
+
+SCORING = {
+    "accuracy": "accuracy",
+    "precision": make_scorer(precision_score),
+    "recall": make_scorer(recall_score),
+    "f1": "f1",
+    "roc_auc": make_scorer(roc_auc_score, needs_threshold=True),
+}
+
+RF_PARAM_GRID = {
+    "n_estimators": [200, 400],
+    "max_depth": [15, 20, None],
+    "min_samples_split": [2, 5, 10],
+    "min_samples_leaf": [1, 2, 4],
+    "max_features": ["sqrt", "log2"],
+}
+
+XGB_PARAM_GRID = {
+    "n_estimators": [200, 400],
+    "max_depth": [3, 5],
+    "learning_rate": [0.05, 0.1],
+    "subsample": [0.8, 1.0],
+    "colsample_bytree": [0.8, 1.0],
+} if XGBOOST_AVAILABLE else {}
+
+FEATURE_LABELS = [
+    "length",
+    "entropy",
+    "consonant_vowel_ratio",
+    "vowel_count",
+    "consonant_count",
+    "digit_count",
+    "special_char_count",
+    "unique_char_count",
+    "max_consecutive_consonants",
+    "max_consecutive_same_char",
+    "pad_1",
+    "pad_2",
+    "pad_3",
+    "pad_4",
+    "pad_5",
+]
+
+
+def classification_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    y_proba: Optional[np.ndarray] = None
+) -> Dict[str, float]:
+    """Return standard binary classification metrics."""
+
+    metrics = {
+        "accuracy": accuracy_score(y_true, y_pred),
+        "precision": precision_score(y_true, y_pred),
+        "recall": recall_score(y_true, y_pred),
+        "f1": f1_score(y_true, y_pred),
+    }
+
+    if y_proba is not None and y_proba.size:
+        try:
+            metrics["roc_auc"] = roc_auc_score(y_true, y_proba)
+        except ValueError:
+            metrics["roc_auc"] = float("nan")
+
+    return metrics
+
 
 def extract_features(domain: str) -> np.ndarray:
     """Extract 15 features from domain"""
@@ -91,47 +178,89 @@ def extract_features(domain: str) -> np.ndarray:
     
     return np.array(features[:15])
 
-def load_data(csv_file: str):
-    """Load and prepare data"""
+def load_dataset(
+    csv_file: Path | str = DATA_FILE,
+    val_split: float = 0.15,
+    test_split: float = 0.15,
+    save_scaler: bool = True
+) -> Dict[str, Any]:
+    """Load dataset, create train/val/test splits, scale features, persist scaler."""
+
+    csv_path = Path(csv_file)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Training dataset not found: {csv_path}")
+
     print("=" * 60)
     print("Loading data...")
     print("=" * 60)
-    
-    df = pd.read_csv(csv_file)
+
+    df = pd.read_csv(csv_path)
     print(f"Total samples: {len(df)}")
-    print(f"Legitimate: {len(df[df['label'] == 0])}")
-    print(f"Malicious: {len(df[df['label'] == 1])}")
-    
-    # Extract features
-    print("\nExtracting features...")
-    X = np.array([extract_features(d) for d in df['domain']])
-    y = df['label'].values
-    
-    # Train/test split
-    print("Train/test split (80/20)...")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+    class_counts = df['label'].value_counts()
+    for label, count in class_counts.items():
+        pct = (count / len(df)) * 100
+        print(f"  Class {label}: {count} ({pct:.2f}%)")
+
+    # Extract features matrix
+    print("\nExtracting handcrafted features...")
+    feature_matrix = np.vstack([extract_features(d) for d in df['domain']])
+    labels = df['label'].to_numpy()
+
+    # Split into train / test first
+    if not 0 < test_split < 1:
+        raise ValueError("test_split must be between 0 and 1")
+    if not 0 < val_split < 1:
+        raise ValueError("val_split must be between 0 and 1")
+
+    X_temp, X_test, y_temp, y_test = train_test_split(
+        feature_matrix,
+        labels,
+        test_size=test_split,
+        random_state=42,
+        stratify=labels
     )
-    
-    # Scale
-    print("Scaling features...")
+
+    # Derive validation ratio from remaining data
+    remaining = 1 - test_split
+    val_ratio = val_split / remaining
+
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_temp,
+        y_temp,
+        test_size=val_ratio,
+        random_state=42,
+        stratify=y_temp
+    )
+
+    print(f"Split sizes → train: {len(X_train)}, val: {len(X_val)}, test: {len(X_test)}")
+
+    # Feature scaling (train only)
+    print("\nFitting StandardScaler on train set...")
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-    
-    # Reshape for LSTM/GRU
-    X_train_rnn = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
-    X_test_rnn = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
-    
-    return {
-        'X_train': X_train,
-        'X_test': X_test,
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)
+    X_test_scaled = scaler.transform(X_test)
+
+    if save_scaler:
+        SCALER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(scaler, SCALER_PATH)
+        print(f"✓ Scaler saved to {SCALER_PATH}")
+
+    dataset = {
+        'X_train': X_train_scaled,
+        'X_val': X_val_scaled,
+        'X_test': X_test_scaled,
         'y_train': y_train,
+        'y_val': y_val,
         'y_test': y_test,
-        'X_train_rnn': X_train_rnn,
-        'X_test_rnn': X_test_rnn,
-        'scaler': scaler
+        'X_train_rnn': X_train_scaled.reshape((X_train_scaled.shape[0], X_train_scaled.shape[1], 1)),
+        'X_val_rnn': X_val_scaled.reshape((X_val_scaled.shape[0], X_val_scaled.shape[1], 1)),
+        'X_test_rnn': X_test_scaled.reshape((X_test_scaled.shape[0], X_test_scaled.shape[1], 1)),
+        'scaler': scaler,
+        'feature_names': FEATURE_LABELS,
     }
+
+    return dataset
 
 def train_lstm(data: dict):
     """Train LSTM model"""
@@ -281,41 +410,42 @@ def train_rf(data: dict):
     
     return {'precision': precision, 'recall': recall, 'f1': f1}
 
+
+def train_models(dataset: dict):
+    """Train all models and persist metrics"""
+    lstm_results = train_lstm(dataset)
+    gru_results = train_gru(dataset)
+    rf_results = train_rf(dataset)
+
+    metrics = {
+        'lstm': lstm_results,
+        'gru': gru_results,
+        'rf': rf_results,
+        'ensemble_weights': {
+            'lstm': 0.33,
+            'gru': 0.33,
+            'rf': 0.34
+        }
+    }
+
+    METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    METRICS_PATH.write_text(json.dumps(metrics, indent=2))
+    print(f"\n✓ Metrics saved: {METRICS_PATH}")
+    return metrics
+
+
 if __name__ == '__main__':
     try:
-        # Load data
-        data = load_data(DATA_FILE)
-        
-        # Train models
-        lstm_results = train_lstm(data)
-        gru_results = train_gru(data)
-        rf_results = train_rf(data)
-        
-        # Summary
+        data = load_dataset(DATA_FILE)
+        metrics = train_models(data)
+
         print("\n" + "=" * 60)
         print("TRAINING SUMMARY")
         print("=" * 60)
-        print(f"\nLSTM F1-Score: {lstm_results['f1']:.4f}")
-        print(f"GRU F1-Score: {gru_results['f1']:.4f}")
-        print(f"Random Forest F1-Score: {rf_results['f1']:.4f}")
-        
-        # Save metrics
-        metrics = {
-            'lstm': lstm_results,
-            'gru': gru_results,
-            'rf': rf_results,
-            'ensemble_weights': {
-                'lstm': 0.33,
-                'gru': 0.33,
-                'rf': 0.34
-            }
-        }
-        
-        metrics_path = MODELS_DIR / 'training_metrics.json'
-        with open(metrics_path, 'w') as f:
-            json.dump(metrics, f, indent=2)
-        
-        print(f"\n✓ Metrics saved: {metrics_path}")
+        for name, values in metrics.items():
+            if isinstance(values, dict) and 'f1' in values:
+                print(f"\n{name.upper()} F1-Score: {values['f1']:.4f}")
+
         print("\n✓ Training complete!")
     
     except Exception as e:
