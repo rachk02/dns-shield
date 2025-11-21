@@ -72,9 +72,17 @@ class RedisClient:
             
             # Test connection
             self._redis.ping()
-            logger.info(f"✓ Redis connected: {Config.REDIS_HOST}:{Config.REDIS_PORT}")
+            logger.info(f"[OK] Redis connected: {Config.REDIS_HOST}:{Config.REDIS_PORT}")
+        except ImportError as e:
+            logger.warning(f"[WARN] Redis package not found ({e}). Using in-memory cache.")
+            self._redis = _InMemoryRedis()
+            self._use_stub = True
+        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+            logger.warning(f"[WARN] Could not connect to Redis ({e}). Check if it's running and config is correct. Using in-memory cache.")
+            self._redis = _InMemoryRedis()
+            self._use_stub = True
         except Exception as e:
-            logger.warning(f"✗ Redis connection unavailable ({e}). Using in-memory cache.")
+            logger.error(f"[ERROR] An unexpected error occurred during Redis connection: {e}")
             self._redis = _InMemoryRedis()
             self._use_stub = True
     

@@ -151,6 +151,27 @@ detector = DGADetector()
 # ENDPOINTS
 # =============================================
 
+@app.route('/', methods=['GET'])
+def root():
+    """Service information and available endpoints"""
+    return jsonify({
+        'service': 'DGA Detector',
+        'version': '1.0.0',
+        'description': 'Heuristic-based DGA domain detection service',
+        'port': 8001,
+        'endpoints': {
+            'POST /analyze': 'Analyze single domain for DGA characteristics',
+            'POST /batch': 'Batch analyze multiple domains (max 100)',
+            'GET /health': 'Health check',
+            'GET /metrics': 'Prometheus metrics'
+        },
+        'example_request': {
+            'endpoint': 'POST /analyze',
+            'body': {'domain': 'example.com'}
+        },
+        'documentation': 'https://github.com/rachk02/dns_shield'
+    }), 200
+
 @app.route('/analyze', methods=['POST'])
 def analyze_domain():
     """Analyze single domain"""

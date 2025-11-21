@@ -121,6 +121,33 @@ orchestrator = CascadeOrchestrator()
 # ENDPOINTS
 # =============================================
 
+@app.route('/', methods=['GET'])
+def root():
+    """Service information and available endpoints"""
+    return jsonify({
+        'service': 'DNS Shield API Gateway',
+        'version': '1.0.0',
+        'description': 'Orchestration and cascade of DGA Detector → BERT → Ensemble ML',
+        'port': 9000,
+        'endpoints': {
+            'POST /analyze': 'Analyze domain through full cascade pipeline',
+            'POST /batch': 'Batch analyze multiple domains (max 100)',
+            'GET /health': 'Health check',
+            'GET /stats': 'System statistics',
+            'GET /metrics': 'Prometheus metrics'
+        },
+        'cascade_stages': {
+            'Stage 1': 'DGA Detector (http://localhost:8001)',
+            'Stage 2': 'BERT Service (http://localhost:8002)',
+            'Stage 3': 'Ensemble ML (http://localhost:8003)'
+        },
+        'example_request': {
+            'endpoint': 'POST /analyze',
+            'body': {'domain': 'example.com'}
+        },
+        'documentation': 'https://github.com/rachk02/dns_shield'
+    }), 200
+
 @app.route('/analyze', methods=['POST'])
 def analyze():
     """Analyze domain through full cascade"""

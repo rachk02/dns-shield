@@ -89,7 +89,7 @@ class BERTAnalyzer:
                     outputs = self.model(**inputs)
                     embedding = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
 
-                    if self.pca and embedding.shape[1] > Config.BERT_PCA_DIM:
+                    if self.pca and hasattr(self.pca, 'components_') and embedding.shape[1] > Config.BERT_PCA_DIM:
                         embedding = self.pca.transform(embedding)
 
                     return embedding[0].tolist()
@@ -142,6 +142,29 @@ analyzer = BERTAnalyzer()
 # =============================================
 # ENDPOINTS
 # =============================================
+
+@app.route('/', methods=['GET'])
+def root():
+    """Service information and available endpoints"""
+    return jsonify({
+        'service': 'BERT Service',
+        'version': '1.0.0',
+        'description': 'Contextual domain classification using BERT embeddings',
+        'port': 8002,
+        'device': str(device),
+        'endpoints': {
+            'POST /embed': 'Get BERT embedding for domain',
+            'POST /classify': 'Classify domain as benign or malicious',
+            'POST /batch': 'Batch classify multiple domains (max 100)',
+            'GET /health': 'Health check',
+            'GET /metrics': 'Prometheus metrics'
+        },
+        'example_request': {
+            'endpoint': 'POST /classify',
+            'body': {'domain': 'example.com'}
+        },
+        'documentation': 'https://github.com/rachk02/dns_shield'
+    }), 200
 
 @app.route('/embed', methods=['POST'])
 def get_embedding():

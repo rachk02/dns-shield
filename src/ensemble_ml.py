@@ -36,7 +36,7 @@ class EnsembleML:
             self.gru_model = keras.models.load_model(Config.GRU_MODEL_PATH)
             self.rf_model = joblib.load(Config.RF_MODEL_PATH)
             
-            logger.info("✓ All models loaded successfully")
+            logger.info("[OK] All models loaded successfully")
         except FileNotFoundError:
             logger.warning(f"Models not found at configured paths")
             logger.warning("Using mock models for demo")
@@ -140,6 +140,28 @@ ensemble = EnsembleML()
 # =============================================
 # ENDPOINTS
 # =============================================
+
+@app.route('/', methods=['GET'])
+def root():
+    """Service information and available endpoints"""
+    return jsonify({
+        'service': 'Ensemble ML',
+        'version': '1.0.0',
+        'description': 'Ensemble voting using LSTM, GRU, and Random Forest models',
+        'port': 8003,
+        'endpoints': {
+            'POST /predict': 'Predict using ensemble voting for single domain',
+            'POST /batch': 'Batch predict multiple domains (max 100)',
+            'GET /models': 'Get loaded models information',
+            'GET /health': 'Health check',
+            'GET /metrics': 'Prometheus metrics'
+        },
+        'example_request': {
+            'endpoint': 'POST /predict',
+            'body': {'domain': 'example.com'}
+        },
+        'documentation': 'https://github.com/rachk02/dns_shield'
+    }), 200
 
 @app.route('/predict', methods=['POST'])
 def predict():
