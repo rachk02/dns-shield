@@ -41,9 +41,9 @@ class DatabaseClient:
                 password=Config.POSTGRES_PASSWORD,
                 connect_timeout=5
             )
-            logger.info(f"✓ Database connected: {Config.POSTGRES_HOST}:{Config.POSTGRES_PORT}/{Config.POSTGRES_DB}")
+            logger.info(f"[OK] Database connected: {Config.POSTGRES_HOST}:{Config.POSTGRES_PORT}/{Config.POSTGRES_DB}")
         except psycopg2.Error as e:
-            logger.error(f"✗ Database connection failed: {e}")
+            logger.error(f"[ERROR] Database connection failed: {e}")
             raise
     
     @staticmethod
