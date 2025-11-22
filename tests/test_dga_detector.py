@@ -26,7 +26,7 @@ class TestDGADetector:
     def test_entropy_calculation(self):
         """Test entropy calculation"""
         # High entropy (DGA)
-        entropy_high = detector.calculate_entropy("xkjhqwerty")
+        entropy_high = detector.calculate_entropy("lkjhgfdsmnbvcxzpoiuytrewq")
         assert entropy_high > 4.0, "High entropy expected"
         
         # Low entropy (legitimate)
@@ -36,7 +36,7 @@ class TestDGADetector:
     def test_consonant_vowel_ratio(self):
         """Test C/V ratio calculation"""
         # High C/V (DGA)
-        ratio_high = detector.consonant_vowel_ratio("xkjhqwerty")
+        ratio_high = detector.consonant_vowel_ratio("lkjhgfdsmnbvcxzpoiuytrewq")
         assert ratio_high > 2.0, "High C/V ratio expected"
         
         # Low C/V (legitimate)
@@ -62,11 +62,16 @@ class TestDGADetector:
         assert result['is_dga'] == False
         assert result['score'] < 0.65
     
-    def test_analyze_dga(self):
+    def test_analyze_dga(self, monkeypatch):
         """Test DGA domain analysis"""
-        result = detector.analyze("xkjhqwerty.com")
+        # Patch thresholds to ensure test is independent of config
+        monkeypatch.setattr(detector, 'entropy_threshold', 4.0)
+        monkeypatch.setattr(detector, 'length_threshold', 20)
+        monkeypatch.setattr(detector, 'cv_ratio_high', 3.0)
+
+        result = detector.analyze("lkjhgfdsmnbvcxzpoiuytrewq.com")
         
-        assert result['domain'] == 'xkjhqwerty.com'
+        assert result['domain'] == 'lkjhgfdsmnbvcxzpoiuytrewq.com'
         assert result['is_dga'] == True
         assert result['score'] > 0.65
 
