@@ -2,8 +2,8 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    monitor: 'dns-shield-monitor'
-    environment: 'development'
+    monitor: "dns-shield-monitor"
+    environment: "development"
 
 # Configuration Alertmanager
 alerting:
@@ -13,55 +13,55 @@ alerting:
 
 # Charger règles d'alerte
 rule_files:
-  - 'config/prometheus/alert_rules.yml'
+  - "config/prometheus/alert_rules.yml"
 
 # Scrape configurations
 scrape_configs:
   # DGA Detector Service
-  - job_name: 'dga-detector'
+  - job_name: "dga-detector"
     static_configs:
-      - targets: ['localhost:8001']
+      - targets: ["host.docker.internal:8001"]
         labels:
-          service: 'dga'
-          environment: 'development'
+          service: "dga"
+          environment: "development"
     scrape_interval: 10s
     scrape_timeout: 5s
-    metrics_path: '/metrics'
+    metrics_path: "/metrics"
 
   # BERT Service
-  - job_name: 'bert-service'
+  - job_name: "bert-service"
     static_configs:
-      - targets: ['localhost:8002']
+      - targets: ["host.docker.internal:8002"]
         labels:
-          service: 'bert'
-          environment: 'development'
+          service: "bert"
+          environment: "development"
     scrape_interval: 10s
     scrape_timeout: 5s
-    metrics_path: '/metrics'
+    metrics_path: "/metrics"
 
   # Ensemble ML Service
-  - job_name: 'ensemble-ml'
+  - job_name: "ensemble-ml"
     static_configs:
-      - targets: ['localhost:8003']
+      - targets: ["host.docker.internal:8003"]
         labels:
-          service: 'ensemble'
-          environment: 'development'
+          service: "ensemble"
+          environment: "development"
     scrape_interval: 10s
     scrape_timeout: 5s
-    metrics_path: '/metrics'
+    metrics_path: "/metrics"
 
   # API Gateway Service
-  - job_name: 'api-gateway'
+  - job_name: "api-gateway"
     static_configs:
-      - targets: ['localhost:9000']
+      - targets: ["host.docker.internal:9000"]
         labels:
-          service: 'gateway'
-          environment: 'development'
+          service: "gateway"
+          environment: "development"
     scrape_interval: 10s
     scrape_timeout: 5s
-    metrics_path: '/metrics'
+    metrics_path: "/metrics"
 
   # Prometheus self-monitoring
-  - job_name: 'prometheus'
+  - job_name: "prometheus"
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ["localhost:9090"]
