@@ -64,7 +64,7 @@ class Config:
     # =============================================
     # DGA DETECTOR CONFIGURATION
     # =============================================
-    DGA_ENTROPY_THRESHOLD = float(os.getenv('DGA_ENTROPY_THRESHOLD', 4.5))
+    DGA_ENTROPY_THRESHOLD = float(os.getenv('DGA_ENTROPY_THRESHOLD', 4.0))
     DGA_LENGTH_THRESHOLD = int(os.getenv('DGA_LENGTH_THRESHOLD', 25))
     DGA_CV_RATIO_LOW = float(os.getenv('DGA_CV_RATIO_LOW', 0.4))
     DGA_CV_RATIO_HIGH = float(os.getenv('DGA_CV_RATIO_HIGH', 2.5))

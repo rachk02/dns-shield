@@ -103,16 +103,22 @@ class RedisClient:
 
             if value is None:
                 return None
+            
+            # Ensure value is a string before trying to parse JSON
+            if isinstance(value, bytes):
+                value = value.decode('utf-8')
 
+            # Now, value is guaranteed to be a string or a pre-parsed object from the stub
             if isinstance(value, str):
                 try:
+                    # Try to parse as JSON, but if it fails, return the string itself
                     return json.loads(value)
                 except json.JSONDecodeError:
                     return value
+            
+            # If it was a pre-parsed object from the stub (already a dict/list), return it
+            return value
 
-            return value
-        except json.JSONDecodeError:
-            return value
         except Exception as e:
             logger.error(f"Redis GET error ({key}): {e}")
             return None
