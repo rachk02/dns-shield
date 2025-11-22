@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 import numpy as np
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from prometheus_client import generate_latest, REGISTRY
 
 try:  # Optional heavy dependencies
@@ -210,7 +210,8 @@ def get_embedding():
     except Exception as e:
         logger.error(f"Embed endpoint error: {e}")
         record_error('bert', 'embed_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/classify', methods=['POST'])
 def classify_domain():
@@ -249,7 +250,8 @@ def classify_domain():
     except Exception as e:
         logger.error(f"Classify endpoint error: {e}")
         record_error('bert', 'classify_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/batch', methods=['POST'])
 def batch_embed():
@@ -285,7 +287,8 @@ def batch_embed():
     except Exception as e:
         logger.error(f"Batch error: {e}")
         record_error('bert', 'batch_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -308,7 +311,7 @@ def health():
 @app.route('/metrics', methods=['GET'])
 def metrics():
     """Prometheus metrics"""
-    return generate_latest(REGISTRY), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    return generate_latest(REGISTRY).decode('utf-8'), 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 # =============================================
 # MAIN

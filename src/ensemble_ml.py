@@ -9,7 +9,7 @@ import json
 import time
 import pickle
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from tensorflow import keras
 from prometheus_client import generate_latest, REGISTRY
 import joblib
@@ -203,7 +203,8 @@ def predict():
     except Exception as e:
         logger.error(f"Endpoint error: {e}")
         record_error('ensemble', 'endpoint_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/batch', methods=['POST'])
 def batch_predict():
@@ -233,7 +234,8 @@ def batch_predict():
     except Exception as e:
         logger.error(f"Batch error: {e}")
         record_error('ensemble', 'batch_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/models', methods=['GET'])
 def get_models():
@@ -268,7 +270,7 @@ def health():
 @app.route('/metrics', methods=['GET'])
 def metrics():
     """Prometheus metrics"""
-    return generate_latest(REGISTRY), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    return generate_latest(REGISTRY).decode('utf-8'), 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 # =============================================
 # MAIN

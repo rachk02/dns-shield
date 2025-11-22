@@ -8,7 +8,7 @@ import math
 import json
 import time
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from prometheus_client import generate_latest, REGISTRY
 import logging
 
@@ -137,7 +137,7 @@ class DGADetector:
             if is_dga:
                 record_block_decision('dga', 'dga_pattern')
             
-            logger.info(f"Analyzed: {domain} → DGA={is_dga} (score={score:.3f})")
+            logger.info(f"Analyzed: {domain} -> DGA={is_dga} (score={score:.3f})")
             return result
         
         except Exception as e:
@@ -209,7 +209,8 @@ def analyze_domain():
     except Exception as e:
         logger.error(f"Endpoint error: {e}")
         record_error('dga', 'endpoint_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/batch', methods=['POST'])
 def batch_analyze():
@@ -236,7 +237,8 @@ def batch_analyze():
     except Exception as e:
         logger.error(f"Batch error: {e}")
         record_error('dga', 'batch_error')
-        return jsonify({'error': str(e)}), 500
+        error_body = json.dumps({'error': repr(e)})
+        return Response(error_body, status=500, mimetype='application/json')
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -257,7 +259,7 @@ def health():
 @app.route('/metrics', methods=['GET'])
 def metrics():
     """Prometheus metrics endpoint"""
-    return generate_latest(REGISTRY), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    return generate_latest(REGISTRY).decode('utf-8'), 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 # =============================================
 # MAIN

@@ -23,7 +23,7 @@ logger = get_logger(__name__, "api_gateway.log")
 app = Flask(__name__)
 
 class CascadeOrchestrator:
-    """Orchestrates cascade through DGA → BERT → Ensemble"""
+    """Orchestrates cascade through DGA -> BERT -> Ensemble"""
     
     def __init__(self):
         self.dga_url = "http://localhost:8001/analyze"
@@ -103,7 +103,7 @@ class CascadeOrchestrator:
                 'timestamp': datetime.now().isoformat()
             }
             
-            logger.info(f"Cascade complete: {domain} → {decision}")
+            logger.info(f"Cascade complete: {domain} -> {decision}")
             return result
         
         except requests.exceptions.Timeout:
@@ -127,7 +127,7 @@ def root():
     return jsonify({
         'service': 'DNS Shield API Gateway',
         'version': '1.0.0',
-        'description': 'Orchestration and cascade of DGA Detector → BERT → Ensemble ML',
+        'description': 'Orchestration and cascade of DGA Detector -> BERT -> Ensemble ML',
         'port': 9000,
         'endpoints': {
             'POST /analyze': 'Analyze domain through full cascade pipeline',
