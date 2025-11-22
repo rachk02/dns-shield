@@ -232,7 +232,7 @@ def load_dataset(
         stratify=y_temp
     )
 
-    print(f"Split sizes → train: {len(X_train)}, val: {len(X_val)}, test: {len(X_test)}")
+    print(f"Split sizes -> train: {len(X_train)}, val: {len(X_val)}, test: {len(X_test)}")
 
     # Feature scaling (train only)
     print("\nFitting StandardScaler on train set...")
