@@ -1,80 +1,229 @@
-# app.py - Lanceur de microservices pour DNS Shield
+#!/usr/bin/env python3
+"""
+DNS Shield Service Orchestrator
+Launches all microservices sequentially using 'uv run' with health checks
+"""
 
 import subprocess
 import time
 import sys
 import os
+import requests
+from typing import List, Dict, Optional
 
-# Définir les services à lancer
-# Chaque service est un dictionnaire avec le chemin du script et le port attendu
+# Service configuration
 SERVICES = [
-    {"name": "DGA Detector", "path": "src/dga_detector.py", "port": 8001},
-    {"name": "BERT Service", "path": "src/bert_service.py", "port": 8002},
-    {"name": "Ensemble ML Service", "path": "src/ensemble_ml.py", "port": 8003},
-    {"name": "API Gateway", "path": "src/api_gateway.py", "port": 9000},
+    {
+        "name": "DGA Detector",
+        "module": "src.dga_detector",
+        "port": 8001,
+        "startup_time": 3
+    },
+    {
+        "name": "BERT Service",
+        "module": "src.bert_service",
+        "port": 8002,
+        "startup_time": 5  # BERT needs more time to load model
+    },
+    {
+        "name": "Ensemble ML",
+        "module": "src.ensemble_ml",
+        "port": 8003,
+        "startup_time": 4
+    },
+    {
+        "name": "API Gateway",
+        "module": "src.api_gateway",
+        "port": 9000,
+        "startup_time": 2
+    },
 ]
 
-def main():
-    """
-    Lance tous les microservices DNS Shield en tant que sous-processus.
-    """
-    print("=" * 40)
-    print("Démarrage des microservices DNS Shield...")
-    print("=" * 40)
+class ServiceOrchestrator:
+    """Manages lifecycle of all DNS Shield services"""
     
-    processes = []
-
-    # Utiliser l'exécutable Python de l'environnement actuel
-    python_executable = sys.executable
-    print(f"Utilisation de l'interpréteur Python : {python_executable}\n")
-
-    for service in SERVICES:
-        script_path = service["path"]
+    def __init__(self):
+        self.processes: List[subprocess.Popen] = []
+        self.services: List[Dict] = SERVICES
         
-        if not os.path.exists(script_path):
-            print(f"ERREUR: Le script pour le service '{service['name']}' est introuvable à '{script_path}'.")
-            continue
-
-        print(f"Démarrage du service : {service['name']} sur le port {service['port']}...")
+    def check_health(self, port: int, timeout: int = 2) -> bool:
+        """Check if service is responding on health endpoint"""
+        try:
+            response = requests.get(
+                f"http://localhost:{port}/health",
+                timeout=timeout
+            )
+            return response.status_code == 200
+        except:
+            return False
+    
+    def wait_for_service(self, service: Dict, max_wait: int = 30) -> bool:
+        """Wait for service to become healthy"""
+        print(f"   Waiting for {service['name']} to be ready...", end="", flush=True)
+        
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            if self.check_health(service['port']):
+                print(" ✅ Ready!")
+                return True
+            print(".", end="", flush=True)
+            time.sleep(0.5)
+        
+        print(" ❌ Timeout!")
+        return False
+    
+    def start_service(self, service: Dict) -> Optional[subprocess.Popen]:
+        """Start a single service using uv run"""
+        print(f"\n{'='*60}")
+        print(f"Starting: {service['name']}")
+        print(f"Module:   {service['module']}")
+        print(f"Port:     {service['port']}")
+        print(f"{'='*60}")
         
         try:
-            # Lancer le script en tant que sous-processus non bloquant
-            # `creationflags` est utilisé sous Windows pour éviter d'ouvrir des fenêtres de console
-            if sys.platform == "win32":
-                process = subprocess.Popen(
-                    [python_executable, script_path],
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-            else:
-                process = subprocess.Popen([python_executable, script_path])
-                
-            processes.append(process)
-            print(f"Le service '{service['name']}' a démarré avec le PID : {process.pid}")
-            time.sleep(2)  # Attendre un peu pour que le service s'initialise
-        
-        except Exception as e:
-            print(f"ERREUR lors du démarrage du service '{service['name']}': {e}")
-
-    print("\n" + "=" * 40)
-    print("Tous les services ont été lancés.")
-    print("La passerelle API devrait être disponible sur le port 9000.")
-    print("Appuyez sur CTRL+C dans ce terminal pour arrêter tous les services.")
-    print("=" * 40)
-
-    try:
-        # Garder le script principal en vie pour pouvoir intercepter CTRL+C
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nInterruption reçue. Arrêt de tous les services...")
-        for process in processes:
-            process.terminate()  # Envoyer le signal de terminaison
-        
-        # Attendre que les processus se terminent
-        for process in processes:
-            process.wait()
+            # Build command: uv run python -m <module>
+            cmd = ["uv", "run", "python", "-m", service['module']]
             
-        print("Tous les services ont été arrêtés. Au revoir!")
+            print(f"Command: {' '.join(cmd)}")
+            
+            # Start process
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,  # Line buffered
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
+            )
+            
+            # Initial wait
+            time.sleep(service['startup_time'])
+            
+            # Check if process died immediately
+            if process.poll() is not None:
+                print(f"❌ ERROR: Process exited with code {process.returncode}")
+                return None
+            
+            print(f"   Process started with PID: {process.pid}")
+            
+            # Wait for health check
+            if self.wait_for_service(service):
+                return process
+            else:
+                print(f"⚠️  Warning: Service started but health check failed")
+                return process  # Return anyway, might still work
+                
+        except FileNotFoundError:
+            print(f"❌ ERROR: 'uv' command not found!")
+            print("   Install uv or make sure it's in your PATH")
+            return None
+        except Exception as e:
+            print(f"❌ ERROR: {e}")
+            return None
+    
+    def start_all(self) -> bool:
+        """Start all services sequentially"""
+        print("\n" + "="*60)
+        print(" DNS SHIELD SERVICE ORCHESTRATOR")
+        print("="*60)
+        print(f"Python: {sys.executable}")
+        print(f"Working Directory: {os.getcwd()}")
+        print("="*60)
+        
+        for service in self.services:
+            process = self.start_service(service)
+            
+            if process:
+                self.processes.append({
+                    'name': service['name'],
+                    'process': process,
+                    'port': service['port']
+                })
+            else:
+                print(f"\n⚠️  Failed to start {service['name']}")
+                print("   Continuing with other services...")
+        
+        # Summary
+        print("\n" + "="*60)
+        print(" STARTUP SUMMARY")
+        print("="*60)
+        
+        if not self.processes:
+            print("❌ No services started successfully!")
+            return False
+        
+        print(f"✅ Started {len(self.processes)}/{len(self.services)} services:\n")
+        for proc_info in self.processes:
+            status = "🟢" if self.check_health(proc_info['port']) else "🔴"
+            print(f"   {status} {proc_info['name']:20s} (PID: {proc_info['process'].pid}, Port: {proc_info['port']})")
+        
+        print("\n" + "="*60)
+        print("🌐 Access Points:")
+        print("="*60)
+        print("   DGA Detector:  http://localhost:8001")
+        print("   BERT Service:  http://localhost:8002")
+        print("   Ensemble ML:   http://localhost:8003")
+        print("   API Gateway:   http://localhost:9000")
+        print("\n   Prometheus:    http://localhost:9090  (if running)")
+        print("   Grafana:       http://localhost:3000  (if running)")
+        print("="*60)
+        print("\n💡 Test with:")
+        print('   curl -X POST http://localhost:9000/analyze \\')
+        print('        -H "Content-Type: application/json" \\')
+        print('        -d \'{"domain": "google.com"}\'')
+        print("\n🛑 Press CTRL+C to stop all services")
+        print("="*60)
+        
+        return True
+    
+    def stop_all(self):
+        """Stop all running services"""
+        print("\n\n" + "="*60)
+        print("Stopping services...")
+        print("="*60)
+        
+        for proc_info in reversed(self.processes):
+            print(f"Stopping {proc_info['name']}...", end=" ", flush=True)
+            try:
+                proc_info['process'].terminate()
+                proc_info['process'].wait(timeout=5)
+                print("✅")
+            except subprocess.TimeoutExpired:
+                print("⚠️  Force killing...")
+                proc_info['process'].kill()
+                proc_info['process'].wait()
+            except Exception as e:
+                print(f"❌ Error: {e}")
+        
+        print("="*60)
+        print("All services stopped. Goodbye! 👋")
+        print("="*60)
+    
+    def run(self):
+        """Main run loop"""
+        if not self.start_all():
+            print("\n❌ Startup failed. Exiting.")
+            return
+        
+        try:
+            # Keep alive and monitor
+            while True:
+                time.sleep(5)
+                
+                # Check if any process died
+                for proc_info in self.processes:
+                    if proc_info['process'].poll() is not None:
+                        print(f"\n⚠️  WARNING: {proc_info['name']} has stopped!")
+                        
+        except KeyboardInterrupt:
+            self.stop_all()
+
+
+def main():
+    """Entry point"""
+    orchestrator = ServiceOrchestrator()
+    orchestrator.run()
+
 
 if __name__ == "__main__":
     main()
