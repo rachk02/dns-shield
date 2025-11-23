@@ -23,19 +23,19 @@ SERVICES = [
         "name": "BERT Service",
         "module": "src.bert_service",
         "port": 8002,
-        "startup_time": 5  # BERT needs more time to load model
+        "startup_time": 10
     },
     {
         "name": "Ensemble ML",
         "module": "src.ensemble_ml",
         "port": 8003,
-        "startup_time": 4
+        "startup_time": 10
     },
     {
         "name": "API Gateway",
         "module": "src.api_gateway",
         "port": 9000,
-        "startup_time": 2
+        "startup_time": 10
     },
 ]
 
@@ -64,12 +64,12 @@ class ServiceOrchestrator:
         start_time = time.time()
         while time.time() - start_time < max_wait:
             if self.check_health(service['port']):
-                print(" ✅ Ready!")
+                print(" [OK] Ready!")
                 return True
             print(".", end="", flush=True)
             time.sleep(0.5)
         
-        print(" ❌ Timeout!")
+        print(" [X] Timeout!")
         return False
     
     def start_service(self, service: Dict) -> Optional[subprocess.Popen]:
@@ -101,7 +101,7 @@ class ServiceOrchestrator:
             
             # Check if process died immediately
             if process.poll() is not None:
-                print(f"❌ ERROR: Process exited with code {process.returncode}")
+                print(f"[ERROR] Process exited with code {process.returncode}")
                 return None
             
             print(f"   Process started with PID: {process.pid}")
@@ -110,15 +110,15 @@ class ServiceOrchestrator:
             if self.wait_for_service(service):
                 return process
             else:
-                print(f"⚠️  Warning: Service started but health check failed")
+                print(f"[WARN] Warning: Service started but health check failed")
                 return process  # Return anyway, might still work
                 
         except FileNotFoundError:
-            print(f"❌ ERROR: 'uv' command not found!")
+            print(f"[ERROR] 'uv' command not found!")
             print("   Install uv or make sure it's in your PATH")
             return None
         except Exception as e:
-            print(f"❌ ERROR: {e}")
+            print(f"[ERROR] {e}")
             return None
     
     def start_all(self) -> bool:
@@ -140,7 +140,7 @@ class ServiceOrchestrator:
                     'port': service['port']
                 })
             else:
-                print(f"\n⚠️  Failed to start {service['name']}")
+                print(f"\n[WARN] Failed to start {service['name']}")
                 print("   Continuing with other services...")
         
         # Summary
@@ -149,16 +149,16 @@ class ServiceOrchestrator:
         print("="*60)
         
         if not self.processes:
-            print("❌ No services started successfully!")
+            print("[ERROR] No services started successfully!")
             return False
         
-        print(f"✅ Started {len(self.processes)}/{len(self.services)} services:\n")
+        print(f"[OK] Started {len(self.processes)}/{len(self.services)} services:\n")
         for proc_info in self.processes:
-            status = "🟢" if self.check_health(proc_info['port']) else "🔴"
+            status = "[OK]" if self.check_health(proc_info['port']) else "[KO]"
             print(f"   {status} {proc_info['name']:20s} (PID: {proc_info['process'].pid}, Port: {proc_info['port']})")
         
         print("\n" + "="*60)
-        print("🌐 Access Points:")
+        print("[*] Access Points:")
         print("="*60)
         print("   DGA Detector:  http://localhost:8001")
         print("   BERT Service:  http://localhost:8002")
@@ -167,11 +167,11 @@ class ServiceOrchestrator:
         print("\n   Prometheus:    http://localhost:9090  (if running)")
         print("   Grafana:       http://localhost:3000  (if running)")
         print("="*60)
-        print("\n💡 Test with:")
+        print("\n[?] Test with:")
         print('   curl -X POST http://localhost:9000/analyze \\')
         print('        -H "Content-Type: application/json" \\')
         print('        -d \'{"domain": "google.com"}\'')
-        print("\n🛑 Press CTRL+C to stop all services")
+        print("\n[!] Press CTRL+C to stop all services")
         print("="*60)
         
         return True
@@ -187,22 +187,22 @@ class ServiceOrchestrator:
             try:
                 proc_info['process'].terminate()
                 proc_info['process'].wait(timeout=5)
-                print("✅")
+                print("[OK]")
             except subprocess.TimeoutExpired:
-                print("⚠️  Force killing...")
+                print("[WARN] Force killing...")
                 proc_info['process'].kill()
                 proc_info['process'].wait()
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f"[ERROR] Error: {e}")
         
         print("="*60)
-        print("All services stopped. Goodbye! 👋")
+        print("All services stopped. Goodbye!")
         print("="*60)
     
     def run(self):
         """Main run loop"""
         if not self.start_all():
-            print("\n❌ Startup failed. Exiting.")
+            print("\n[ERROR] Startup failed. Exiting.")
             return
         
         try:
@@ -213,7 +213,7 @@ class ServiceOrchestrator:
                 # Check if any process died
                 for proc_info in self.processes:
                     if proc_info['process'].poll() is not None:
-                        print(f"\n⚠️  WARNING: {proc_info['name']} has stopped!")
+                        print(f"\n[WARN] WARNING: {proc_info['name']} has stopped!")
                         
         except KeyboardInterrupt:
             self.stop_all()
